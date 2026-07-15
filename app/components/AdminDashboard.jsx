@@ -1,368 +1,365 @@
-'use client'
-import { useState } from 'react';
+'use client';
+import { useEffect, useMemo, useState } from 'react';
+import CredentialModal from './CredentialModal';
+import UserManagementModal from './UserManagementModal';
+
+const initialCredentials = [
+  { id: 1, name: 'SAP', email: 'sap.user', password: 'Sap@2026!', description: 'Primary ERP access' },
+  { id: 2, name: 'Oracle', email: 'finance.user', password: 'Ora!2026#', description: 'Finance system access' },
+  { id: 3, name: 'VPN', email: 'remote.user', password: 'Vpn#2026$', description: 'Secure remote onboarding' },
+];
+
+const normalizeCredentials = (items = []) =>
+  items.map((item, index) => {
+    const isMaskedPassword = typeof item?.password === 'string' && /^\*+$/.test(item.password.trim());
+    const fallbackPassword =
+      item?.name === 'SAP'
+        ? 'Sap@2026!'
+        : item?.name === 'Oracle'
+          ? 'Ora!2026#'
+          : item?.name === 'VPN'
+            ? 'Vpn#2026$'
+            : `sample-password-${index + 1}`;
+
+    return {
+      ...item,
+      password: isMaskedPassword ? fallbackPassword : item?.password ?? '',
+    };
+  });
+
+const seededUsers = [
+  { id: 1, username: 'admin', password: 'admin123', name: 'Kiran Kumar HK', email: 'kiran@exdion.com', role: 'admin', status: 'approved' },
+  { id: 2, username: 'user', password: 'user123', name: 'Asha R', email: 'asha@exdion.com', role: 'user', status: 'approved' },
+];
 
 export default function App() {
-  // Authentication State
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
-
-  // Dashboard States
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [popNotification, setPopNotification] = useState("");
+  const [popNotification, setPopNotification] = useState('');
+  const [credentials, setCredentials] = useState(() => normalizeCredentials(initialCredentials));
+  const [search, setSearch] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('view');
+  const [selectedCredential, setSelectedCredential] = useState(null);
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [users, setUsers] = useState(seededUsers);
+  const [theme, setTheme] = useState('ocean');
+  const [currentUser, setCurrentUser] = useState(null);
 
-  // Handler for actions triggering the pop notification
   const triggerPop = (action, credential) => {
-    setPopNotification(`${action} action triggered for ${credential}!`);
+    setPopNotification(`${action} action triggered for ${credential}.`);
     setTimeout(() => {
-      setPopNotification("");
+      setPopNotification('');
     }, 2500);
   };
 
-  // Login processing
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (username === 'admin' && password === 'admin23') {
-      setIsLoggedIn(true);
-      setLoginError('');
-    } else {
-      setLoginError('Invalid username or password.');
+  const openModal = (mode, credential) => {
+    setModalMode(mode);
+    setSelectedCredential(credential);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalMode('view');
+    setSelectedCredential(null);
+  };
+
+  const handleSave = (updatedCredential) => {
+    const normalizedCredential = {
+      ...updatedCredential,
+      id: updatedCredential.id || Date.now(),
+    };
+
+    setCredentials((prev) => {
+      const exists = prev.some((item) => item.id === normalizedCredential.id);
+      if (exists) {
+        return prev.map((item) => (item.id === normalizedCredential.id ? normalizedCredential : item));
+      }
+      return [normalizedCredential, ...prev];
+    });
+
+    triggerPop(updatedCredential.id ? 'Updated' : 'Added', normalizedCredential.name);
+    closeModal();
+  };
+
+  const handleDelete = (id) => {
+    setCredentials((prev) => prev.filter((item) => item.id !== id));
+    triggerPop('Deleted', selectedCredential?.name || 'credential');
+    closeModal();
+  };
+
+  const filteredCredentials = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return credentials;
+
+    return credentials.filter((item) =>
+      [item.name, item.email, item.description].some((value) => value.toLowerCase().includes(query))
+    );
+  }, [credentials, search]);
+
+  const copyToClipboard = async (value) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      triggerPop('Password copied', 'clipboard');
+    } catch {
+      triggerPop('Copy failed', 'clipboard');
     }
   };
 
-  // Logout processing
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setUsername('');
-    setPassword('');
+  const handleCreateUser = (user) => {
+    const nextUsers = [{ ...user, status: user.status || 'approved' }, ...users];
+    setUsers(nextUsers);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('appUsers', JSON.stringify(nextUsers));
+    }
+    triggerPop('Created user', user.username);
   };
 
-  // 1. RENDER LOGIN SCREEN IF NOT AUTHENTICATED
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 font-sans px-4">
-        <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-100">
-          
-          <div className="text-center mb-8">
-            <span className="text-4xl">🤖</span>
-            <h1 className="text-2xl font-bold text-slate-800 mt-2 tracking-wide">EXDION CASH</h1>
-            <p className="text-sm text-gray-500 mt-1">Please log in to manage admin panel</p>
-          </div>
+  const handleApproveUser = (userId) => {
+    const nextUsers = users.map((user) => (user.id === userId ? { ...user, status: 'approved' } : user));
+    setUsers(nextUsers);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('appUsers', JSON.stringify(nextUsers));
+    }
+    triggerPop('Approved', 'user');
+  };
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            {loginError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm text-center font-medium animate-pulse">
-                ❌ {loginError}
-              </div>
-            )}
+  const handleRejectUser = (userId) => {
+    const nextUsers = users.filter((user) => user.id !== userId);
+    setUsers(nextUsers);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('appUsers', JSON.stringify(nextUsers));
+    }
+    triggerPop('Rejected', 'user');
+  };
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-600 mb-2">Username</label>
-              <input 
-                type="text" 
-                value={username}
-                placeholder="Enter admin username" 
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 font-medium"
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
-            </div>
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedCredentials = window.localStorage.getItem('vaultCredentials');
+        if (storedCredentials) {
+          const parsedCredentials = JSON.parse(storedCredentials);
+          setCredentials(normalizeCredentials(parsedCredentials));
+        }
+      } catch {
+        // fall back
+      }
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-600 mb-2">Password</label>
-              <input 
-                type="password" 
-                value={password}
-                placeholder="Enter admin password" 
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 font-medium"
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
+      try {
+        const storedUsers = window.localStorage.getItem('appUsers');
+        if (storedUsers) {
+          setUsers(JSON.parse(storedUsers));
+        }
+      } catch {
+        // fall back
+      }
 
-            <button 
-              type="submit"
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg active:scale-[0.99]"
-            >
-              Secure Login
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+      const storedTheme = window.localStorage.getItem('theme') || 'ocean';
+      setTheme(storedTheme);
 
-  // 2. RENDER MAIN ADMIN DASHBOARD SCREEN ON SUCCESSFUL AUTHENTICATION
+      const storedUser = window.localStorage.getItem('currentUser');
+      if (storedUser) {
+        try {
+          setCurrentUser(JSON.parse(storedUser));
+        } catch {
+          setCurrentUser(null);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('appUsers', JSON.stringify(users));
+    }
+  }, [users]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('vaultCredentials', JSON.stringify(credentials));
+    }
+  }, [credentials]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('theme', theme);
+      document.documentElement.setAttribute('data-theme', theme);
+      window.dispatchEvent(new Event('theme:changed'));
+    }
+  }, [theme]);
+
+  const themeStyles = {
+    ocean: 'from-blue-600 to-cyan-500',
+    midnight: 'from-slate-800 to-indigo-700',
+    emerald: 'from-emerald-600 to-teal-500',
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100 font-sans relative">
-      
-      {/* Dynamic Green Light Pop-up Notification */}
+    <div className={`relative space-y-6 bg-gradient-to-br ${themeStyles[theme]} p-1 rounded-[2rem]`}>
       {popNotification && (
-        <div className="fixed top-5 right-5 z-50 flex items-center gap-3 bg-green-500 text-white px-6 py-3 rounded-xl shadow-2xl animate-bounce border-2 border-green-300">
-          <span className="w-3 h-3 bg-white rounded-full animate-ping"></span>
-          <span className="font-semibold">{popNotification}</span>
+        <div className="fixed right-4 top-4 z-[9999] flex items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_20px_60px_-15px_rgba(0,0,0,0.45)] ring-1 ring-white/20">
+          <span className="h-2.5 w-2.5 animate-ping rounded-full bg-white" />
+          {popNotification}
         </div>
       )}
 
-      {/* Header */}
-      <header className="bg-slate-900 text-white px-8 py-4 flex justify-between items-center shadow-md">
-        <h1 className="text-2xl font-bold tracking-wide flex items-center gap-2">
-          <span>🤖</span> EXDION CASH
-        </h1>
+      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-[2rem] border border-slate-200/70 bg-white p-6 shadow-[0_20px_70px_-25px_rgba(15,23,42,0.45)]">
+          <div className="mb-4 inline-flex rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700">
+            Admin Overview
+          </div>
+          <h2 className="text-2xl font-semibold text-slate-900">Welcome back, {currentUser?.name || 'Kiran'}</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Manage stored credentials and team access from one secure dashboard.
+          </p>
 
-        <button 
-          onClick={handleLogout}
-          className="bg-red-500 hover:bg-red-600 text-sm font-medium px-5 py-2 rounded-lg transition-all shadow-md active:scale-95"
-        >
-          Logout
-        </button>
-      </header>
-
-      {/* Main Content Layout */}
-      <div className="p-6 grid lg:grid-cols-4 gap-6">
-        
-        {/* User Profile */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 h-fit border border-gray-100">
-          <h2 className="text-xl font-bold mb-5 text-slate-800 pb-2 border-b">User Details</h2>
-
-          <div className="space-y-4 text-gray-700">
-            <p className="flex justify-between items-center">
-              <span className="font-semibold text-gray-500">Name:</span> 
-              <span className="font-medium text-slate-900">Kiran Kumar HK</span>
-            </p>
-
-            <p className="flex justify-between items-center">
-              <span className="font-semibold text-gray-500">ID:</span> 
-              <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-900">EX001</span>
-            </p>
-
-            <p className="flex justify-between items-center">
-              <span className="font-semibold text-gray-500">Department:</span> 
-              <span className="font-medium text-slate-900">IT</span>
-            </p>
-
-            <div className="flex flex-col gap-1">
-              <span className="font-semibold text-gray-500">Email:</span>
-              <span className="text-sm font-medium text-blue-600 break-all">kirankumar_hk@exdion.com</span>
-            </div>
-
-            <div className="pt-2 flex justify-between items-center">
-              <span className="font-semibold text-gray-500">Role:</span>
-              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase shadow-sm">
-                Administrator
-              </span>
-            </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {[
+              { label: 'Active credentials', value: '24' },
+              { label: 'Pending review', value: '6' },
+              { label: 'Critical access', value: '3' },
+            ].map((item) => (
+              <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
+                <p className="mt-1 text-xl font-semibold text-slate-900">{item.value}</p>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Right Section */}
-        <div className="lg:col-span-3 space-y-6">
-          
-          {/* AI Assistant (Hidden inside Robot Picture until clicked) */}
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 transition-all duration-300">
-            <div className="flex items-center gap-5">
-              
-              {/* Clickable Robot Avatar */}
-              <div 
-                onClick={() => setIsChatOpen(!isChatOpen)}
-                className={`w-20 h-20 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white text-4xl cursor-pointer select-none transition-all duration-300 transform hover:scale-110 active:scale-95 shadow-md ${
-                  isChatOpen ? 'ring-4 ring-cyan-300' : 'animate-pulse'
-                }`}
-                title="Click me to open/hide chat!"
-              >
-                🤖
-              </div>
+        <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-lg shadow-slate-200/70">
+          <div className="flex items-center gap-4">
+            <div
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              className={`flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-3xl text-white shadow-lg transition ${isChatOpen ? 'ring-4 ring-cyan-200' : ''}`}
+            >
+              🤖
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Robo Assistant</h3>
+              <p className="text-sm text-slate-500">{isChatOpen ? 'Ask a question or trigger an action.' : 'Click the robot to open the assistant.'}</p>
+            </div>
+          </div>
 
+          {isChatOpen && (
+            <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row">
+              <input
+                type="text"
+                placeholder="Ask anything..."
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => triggerPop('Voice input', 'Robo Assistant')} className="rounded-2xl bg-emerald-500 px-4 py-3 text-white">🎤</button>
+                <button onClick={() => triggerPop('Search query', 'Robo Assistant')} className="rounded-2xl bg-blue-600 px-4 py-3 text-white">🔍</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid gap-6">
+        <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-lg shadow-slate-200/70">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">Credential access</h3>
+              <p className="text-sm text-slate-500">Review and manage team credentials quickly.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search credentials"
+                className="rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
+              />
+              <button onClick={() => setUserModalOpen(true)} className="rounded-2xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white">+ Add user</button>
+              <button onClick={() => openModal('add', null)} className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">+ Add</button>
+              <button onClick={() => triggerPop('Clear data', 'All credentials')} className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white">Clear</button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-900 text-left text-white">
+                <tr>
+                  <th className="px-4 py-3">Service</th>
+                  <th className="px-4 py-3">Username</th>
+                  <th className="px-4 py-3">Notes</th>
+                  <th className="px-4 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {filteredCredentials.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.email}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.description}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button onClick={() => { triggerPop('View', item.name); openModal('view', item); }} className="rounded-lg bg-blue-50 px-2.5 py-2 text-blue-600">👁️</button>
+                        <button onClick={() => { triggerPop('Edit', item.name); openModal('edit', item); }} className="rounded-lg bg-amber-50 px-2.5 py-2 text-amber-600">✏️</button>
+                        <button onClick={() => { triggerPop('Delete', item.name); openModal('delete', item); }} className="rounded-lg bg-rose-50 px-2.5 py-2 text-rose-600">🗑️</button>
+                        <button onClick={() => copyToClipboard(item.email)} className="rounded-lg bg-emerald-50 px-2.5 py-2 text-emerald-600" title="Copy username">👤</button>
+                        <button onClick={() => copyToClipboard(item.password)} className="rounded-lg bg-violet-50 px-2.5 py-2 text-violet-600" title="Copy password">🔑</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-slate-200/70 bg-white p-6 shadow-[0_20px_70px_-25px_rgba(15,23,42,0.45)]">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-semibold text-slate-900">User management</h3>
+            <p className="text-sm text-slate-500">Approve access requests and manage who can use the application.</p>
+          </div>
+          <button onClick={() => setUserModalOpen(true)} className="rounded-2xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white">Create user</button>
+        </div>
+
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Pending approvals: {users.filter((user) => user.status === 'pending').length}
+        </div>
+
+        <div className="grid gap-3">
+          {users.map((user) => (
+            <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div>
-                <h2 className="text-xl font-bold text-slate-800">Robo Assistant</h2>
-                <p className="text-sm text-gray-500">
-                  {isChatOpen ? "Click the robot again to hide assistant window." : "Click the robot avatar to start chatting!"}
+                <p className="font-semibold text-slate-900">{user.name}</p>
+                <p className="text-sm text-slate-500">{user.username} • {user.email}</p>
+                <p className={`mt-1 text-xs font-semibold uppercase tracking-wide ${user.status === 'pending' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  {user.status === 'pending' ? 'Pending approval' : 'Approved'}
                 </p>
               </div>
-            </div>
-
-            {/* Collapsible Chat Elements */}
-            {isChatOpen && (
-              <div className="mt-6 pt-5 border-t border-gray-100 flex items-center gap-4 animate-fadeIn">
-                <input
-                  type="text"
-                  placeholder="Ask anything..."
-                  className="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                />
-
-                <button 
-                  onClick={() => triggerPop("Voice Input", "Robo Chat")}
-                  className="w-12 h-12 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xl flex items-center justify-center shadow-md transition-all active:scale-90"
-                >
-                  🎤
-                </button>
-
-                <button 
-                  onClick={() => triggerPop("Search Query", "Robo Chat")}
-                  className="w-12 h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xl flex items-center justify-center shadow-md transition-all active:scale-90"
-                >
-                  🔍
-                </button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => copyToClipboard(user.username)} className="rounded-2xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">Copy username</button>
+                {user.status === 'pending' && (
+                  <>
+                    <button onClick={() => handleApproveUser(user.id)} className="rounded-2xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Approve</button>
+                    <button onClick={() => handleRejectUser(user.id)} className="rounded-2xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white">Reject</button>
+                  </>
+                )}
               </div>
-            )}
-          </div>
-
-          {/* Quick Actions */}
-          <div className="flex gap-4">
-            <button 
-              onClick={() => triggerPop("Add", "New Credential")}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium tracking-wide shadow-md transition-all active:scale-95 flex items-center gap-2"
-            >
-              <span>+</span> Add Credential
-            </button>
-
-            <button 
-              onClick={() => triggerPop("Clear Data", "All Credentials")}
-              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-medium tracking-wide shadow-md transition-all active:scale-95"
-            >
-              Clear All
-            </button>
-          </div>
-
-          {/* Credential Table with Symbols */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-900 text-white text-sm font-semibold tracking-wider">
-                  <tr>
-                    <th className="p-4 text-center">S.No</th>
-                    <th className="p-4">Credential</th>
-                    <th className="p-4">Password</th>
-                    <th className="p-4">Email</th>
-                    <th className="p-4 text-center">Priority</th>
-                    <th className="p-4 text-center">Status</th>
-                    <th className="p-4 text-center">Actions</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
-                  
-                  {/* Row 1 - SAP */}
-                  <tr className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4 font-medium text-center text-gray-400">1</td>
-                    <td className="p-4 font-bold text-slate-800">SAP</td>
-                    <td className="p-4 tracking-widest font-mono text-gray-400">******</td>
-                    <td className="p-4 font-medium text-gray-600">sap@company.com</td>
-                    <td className="p-4 text-center">
-                      <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold">
-                        High
-                      </span>
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                        Active
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex justify-center items-center gap-3">
-                        {/* View Symbol */}
-                        <button 
-                          onClick={() => triggerPop("View", "SAP")}
-                          className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-all active:scale-90"
-                          title="View"
-                        >
-                          👁️
-                        </button>
-                        {/* Edit Symbol */}
-                        <button 
-                          onClick={() => triggerPop("Edit", "SAP")}
-                          className="p-2 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg transition-all active:scale-90"
-                          title="Edit"
-                        >
-                          ✏️
-                        </button>
-                        {/* Delete Symbol */}
-                        <button 
-                          onClick={() => triggerPop("Delete", "SAP")}
-                          className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-all active:scale-90"
-                          title="Delete"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 2 - Oracle */}
-                  <tr className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4 font-medium text-center text-gray-400">2</td>
-                    <td className="p-4 font-bold text-slate-800">Oracle</td>
-                    <td className="p-4 tracking-widest font-mono text-gray-400">******</td>
-                    <td className="p-4 font-medium text-gray-600">oracle@company.com</td>
-                    <td className="p-4 text-center">
-                      <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold">
-                        Medium
-                      </span>
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                        Active
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex justify-center items-center gap-3">
-                        {/* View Symbol */}
-                        <button 
-                          onClick={() => triggerPop("View", "Oracle")}
-                          className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-all active:scale-90"
-                          title="View"
-                        >
-                          👁️
-                        </button>
-                        {/* Edit Symbol */}
-                        <button 
-                          onClick={() => triggerPop("Edit", "Oracle")}
-                          className="p-2 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg transition-all active:scale-90"
-                          title="Edit"
-                        >
-                          ✏️
-                        </button>
-                        {/* Delete Symbol */}
-                        <button 
-                          onClick={() => triggerPop("Delete", "Oracle")}
-                          className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-all active:scale-90"
-                          title="Delete"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                </tbody>
-              </table>
             </div>
-          </div>
-
-          {/* Email Access Indicators */}
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
-            <h2 className="text-xl font-bold mb-4 text-slate-800">
-              Assigned Email Access
-            </h2>
-
-            <div className="flex flex-wrap gap-3">
-              <span className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-xl text-sm font-medium shadow-sm">
-                ✔ SAP Mail
-              </span>
-
-              <span className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-xl text-sm font-medium shadow-sm">
-                ✔ Oracle Mail
-              </span>
-
-              <span className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-xl text-sm font-medium shadow-sm">
-                ✔ VPN Mail
-              </span>
-            </div>
-          </div>
-
+          ))}
         </div>
-      </div>
+      </section>
+
+      <CredentialModal
+        isOpen={modalOpen}
+        mode={modalMode}
+        credential={selectedCredential}
+        onClose={closeModal}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
+      <UserManagementModal
+        isOpen={userModalOpen}
+        onClose={() => setUserModalOpen(false)}
+        onCreate={handleCreateUser}
+      />
     </div>
   );
 }

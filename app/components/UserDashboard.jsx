@@ -1,199 +1,213 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import CredentialModal from "./CredentialModal";
+
+const initialCredentials = [
+  { id: 1, name: "SAP", email: "sap.user", password: "Sap@2026!", description: "Primary ERP access" },
+  { id: 2, name: "Oracle", email: "finance.user", password: "Ora!2026#", description: "Finance system access" },
+  { id: 3, name: "VPN", email: "remote.user", password: "Vpn#2026$", description: "Secure remote onboarding" },
+];
+
+const normalizeCredentials = (items = []) =>
+  items.map((item, index) => {
+    const isMaskedPassword = typeof item?.password === "string" && /^\*+$/.test(item.password.trim());
+    const fallbackPassword =
+      item?.name === "SAP"
+        ? "Sap@2026!"
+        : item?.name === "Oracle"
+          ? "Ora!2026#"
+          : item?.name === "VPN"
+            ? "Vpn#2026$"
+            : `sample-password-${index + 1}`;
+
+    return {
+      ...item,
+      password: isMaskedPassword ? fallbackPassword : item?.password ?? "",
+    };
+  });
+
 export default function UserDashboard() {
+  const [selectedAction, setSelectedAction] = useState("");
+  const [credentials, setCredentials] = useState(() => normalizeCredentials(initialCredentials));
+  const [search, setSearch] = useState("");
+  const [theme, setTheme] = useState("ocean");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState("view");
+  const [selectedCredential, setSelectedCredential] = useState(null);
+
+  const openModal = (mode, credential) => {
+    setModalMode(mode);
+    setSelectedCredential(credential);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalMode("view");
+    setSelectedCredential(null);
+  };
+
+  const handleSave = (updatedCredential) => {
+    const normalizedCredential = {
+      ...updatedCredential,
+      id: updatedCredential.id || Date.now(),
+    };
+
+    setCredentials((prev) => {
+      const exists = prev.some((item) => item.id === normalizedCredential.id);
+      if (exists) {
+        return prev.map((item) => (item.id === normalizedCredential.id ? normalizedCredential : item));
+      }
+      return [normalizedCredential, ...prev];
+    });
+
+    closeModal();
+  };
+
+  const handleDelete = (id) => {
+    setCredentials((prev) => prev.filter((item) => item.id !== id));
+    closeModal();
+  };
+
+  const filteredCredentials = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return credentials;
+
+    return credentials.filter((item) => [item.name, item.email, item.description].some((value) => value.toLowerCase().includes(query)));
+  }, [credentials, search]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const storedCredentials = window.localStorage.getItem("vaultCredentials");
+        if (storedCredentials) {
+          const parsedCredentials = JSON.parse(storedCredentials);
+          setCredentials(normalizeCredentials(parsedCredentials));
+        }
+      } catch {
+        // fall back
+      }
+
+      const storedTheme = window.localStorage.getItem("theme") || "ocean";
+      setTheme(storedTheme);
+      const storedUser = window.localStorage.getItem("currentUser");
+      if (storedUser) {
+        try {
+          setCurrentUser(JSON.parse(storedUser));
+        } catch {
+          setCurrentUser(null);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("theme", theme);
+      document.documentElement.setAttribute("data-theme", theme);
+      window.dispatchEvent(new Event("theme:changed"));
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("vaultCredentials", JSON.stringify(credentials));
+    }
+  }, [credentials]);
+
+  const copyToClipboard = async (value) => {
+    try {
+      await navigator.clipboard.writeText(String(value ?? ""));
+    } catch {
+      // ignore clipboard errors
+    }
+  };
+
+  const themeStyles = {
+    ocean: "from-blue-600 to-cyan-500",
+    midnight: "from-slate-800 to-indigo-700",
+    emerald: "from-emerald-600 to-teal-500",
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100">
-      {/* Header */}
-      <header className="bg-slate-900 text-white px-8 py-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold">🤖 EXDION CASH</h1>
+    <div className={`space-y-6 rounded-[2rem] border border-slate-200/70 bg-white/90 p-4 shadow-[0_20px_70px_-25px_rgba(15,23,42,0.35)] md:p-6 lg:p-8`}>
+      <section className="grid gap-6">
+        <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-lg shadow-slate-200/70">
+          <h3 className="text-xl font-semibold text-slate-900">Quick actions</h3>
+          <div className="mt-5 flex flex-wrap gap-3">
+            {['View access', 'Request update', 'Report issue'].map((action) => (
+              <button
+                key={action}
+                onClick={() => setSelectedAction(action)}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${selectedAction === action ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+              >
+                {action}
+              </button>
+            ))}
+          </div>
+          {selectedAction && <p className="mt-4 text-sm text-slate-600">Selected action: <span className="font-semibold text-slate-900">{selectedAction}</span></p>}
+        </div>
+      </section>
 
-        <button onClick={() => window.location.href="/"} className="bg-red-500 hover:bg-red-600 px-5 py-2 rounded-lg transition">
-          Logout
-        </button>
-      </header>
-
-      {/* Main Content */}
-      <div className="p-6 grid lg:grid-cols-4 gap-6">
-        {/* User Profile */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 h-fit">
-          <h2 className="text-xl font-bold mb-5">User Details</h2>
-
-          <div className="space-y-3 text-gray-700">
-            <p>
-              <span className="font-semibold">Name:</span> Kiran Kumar HK
-            </p>
-
-            <p>
-              <span className="font-semibold">ID:</span> EX001
-            </p>
-
-            <p>
-              <span className="font-semibold">Department:</span> IT
-            </p>
-
-            <p>
-              <span className="font-semibold">Email:</span>{" "}
-              kirankumar_hk@exdion.com
-            </p>
-
-            <div>
-              <span className="font-semibold">Role:</span>{" "}
-              <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                Administrator
-              </span>
-            </div>
+      <section className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-lg shadow-slate-200/70">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-semibold text-slate-900">Your credentials</h3>
+            <p className="text-sm text-slate-500">Use the view and edit actions to keep your access current.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search credentials"
+              className="rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
+            />
+            <button onClick={() => openModal("add", null)} className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">+ Add</button>
           </div>
         </div>
 
-        {/* Right Section */}
-        <div className="lg:col-span-3 space-y-6">
-          {/* AI Assistant */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold mb-2">
-              🤖 Robo Assistant
-            </h2>
-
-            <p className="text-gray-500 mb-5">
-              Click the robot to start chatting!
-            </p>
-
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 flex items-center justify-center text-white text-4xl cursor-pointer hover:scale-110 transition">
-                🤖
-              </div>
-
-              <input
-                type="text"
-                placeholder="Ask anything..."
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
-              <button className="w-12 h-12 rounded-full bg-green-500 text-white text-xl">
-                🎤
-              </button>
-
-              <button className="w-12 h-12 rounded-full bg-blue-600 text-white text-xl">
-                🔍
-              </button>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-4">
-            <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition">
-              + Add Credential
-            </button>
-
-            <button className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg transition">
-              Clear All
-            </button>
-          </div>
-
-          {/* Credential Table */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-900 text-white">
-                <tr>
-                  <th className="p-4">S.No</th>
-                  <th>Credential</th>
-                  <th>Password</th>
-                  <th>Email</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y">
-                <tr className="hover:bg-gray-50">
-                  <td className="p-4">1</td>
-                  <td>SAP</td>
-                  <td>******</td>
-                  <td>sap@company.com</td>
-
-                  <td>
-                    <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm">
-                      High
-                    </span>
-                  </td>
-
-                  <td>
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                      Active
-                    </span>
-                  </td>
-
-                  <td className="space-x-2">
-                    <button className="bg-blue-500 text-white px-3 py-1 rounded">
-                      View
-                    </button>
-
-                    <button className="bg-orange-500 text-white px-3 py-1 rounded">
-                      Edit
-                    </button>
-
-                    <button className="bg-red-500 text-white px-3 py-1 rounded">
-                      Delete
-                    </button>
+        <div className="overflow-hidden rounded-2xl border border-slate-200">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-900 text-left text-white">
+              <tr>
+                <th className="px-4 py-3">Service</th>
+                <th className="px-4 py-3">Username</th>
+                <th className="px-4 py-3">Notes</th>
+                <th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {filteredCredentials.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{item.email}</td>
+                  <td className="px-4 py-3 text-slate-600">{item.description}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <button onClick={() => openModal('view', item)} className="rounded-lg bg-blue-50 px-2.5 py-2 text-blue-600">👁️</button>
+                      <button onClick={() => openModal('edit', item)} className="rounded-lg bg-amber-50 px-2.5 py-2 text-amber-600">✏️</button>
+                      <button onClick={() => openModal('delete', item)} className="rounded-lg bg-rose-50 px-2.5 py-2 text-rose-600">🗑️</button>
+                      <button onClick={() => copyToClipboard(item.email)} className="rounded-lg bg-emerald-50 px-2.5 py-2 text-emerald-600" title="Copy username">👤</button>
+                      <button onClick={() => copyToClipboard(item.password)} className="rounded-lg bg-violet-50 px-2.5 py-2 text-violet-600" title="Copy password">🔑</button>
+                    </div>
                   </td>
                 </tr>
-
-                <tr className="hover:bg-gray-50">
-                  <td className="p-4">2</td>
-                  <td>Oracle</td>
-                  <td>******</td>
-                  <td>oracle@company.com</td>
-
-                  <td>
-                    <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm">
-                      Medium
-                    </span>
-                  </td>
-
-                  <td>
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                      Active
-                    </span>
-                  </td>
-
-                  <td className="space-x-2">
-                    <button className="bg-blue-500 text-white px-3 py-1 rounded">
-                      View
-                    </button>
-
-                    <button className="bg-orange-500 text-white px-3 py-1 rounded">
-                      Edit
-                    </button>
-
-                    <button className="bg-red-500 text-white px-3 py-1 rounded">
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Email Access */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-bold mb-4">
-              Assigned Email Access
-            </h2>
-
-            <div className="flex flex-wrap gap-4">
-              <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-full">
-                ✔ SAP Mail
-              </span>
-
-              <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-full">
-                ✔ Oracle Mail
-              </span>
-
-              <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-full">
-                ✔ VPN Mail
-              </span>
-            </div>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+      </section>
+
+      <CredentialModal
+        isOpen={modalOpen}
+        mode={modalMode}
+        credential={selectedCredential}
+        onClose={closeModal}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }
