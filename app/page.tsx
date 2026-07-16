@@ -47,31 +47,37 @@ export default function Home() {
   const [error, setError] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError("");
     setRequestMessage("");
 
-    const users = readUsers();
-    const matchedUser = users.find(
-      (user) => user.username === username.trim() && user.password === password
-    );
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password,
+        }),
+      });
 
-    if (matchedUser) {
-      if (matchedUser.status === "pending") {
-        setError("Your access request is still pending admin approval.");
+      const data = await response.json();
+
+      if (!data.success) {
+        setError(data.error || "Login failed");
         return;
       }
 
+      const matchedUser = data.user;
       window.localStorage.setItem("role", matchedUser.role);
       window.localStorage.setItem("currentUser", JSON.stringify(matchedUser));
       router.push(matchedUser.role === "admin" ? "/admin" : "/user");
-      return;
+    } catch {
+      setError("Unable to reach the authentication service right now.");
     }
-
-    setError("Invalid username or password.");
   };
 
-  const handleRequestAccess = () => {
+  const handleRequestAccess = async () => {
     setError("");
     setRequestMessage("");
 
@@ -84,31 +90,33 @@ export default function Home() {
       return;
     }
 
-    const users = readUsers();
-    const existingUser = users.find((user) => user.username.toLowerCase() === trimmedUsername.toLowerCase());
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: trimmedUsername,
+          password,
+          name: trimmedName,
+          email: trimmedEmail,
+        }),
+      });
 
-    if (existingUser) {
-      setError("That username is already in use.");
-      return;
+      const data = await response.json();
+
+      if (!data.success) {
+        setError(data.error || "Registration failed");
+        return;
+      }
+
+      setUsername("");
+      setPassword("");
+      setRequestName("");
+      setRequestEmail("");
+      setRequestMessage(data.message);
+    } catch {
+      setError("Unable to save your access request right now.");
     }
-
-    const pendingUser = {
-      id: Date.now(),
-      username: trimmedUsername,
-      password,
-      name: trimmedName,
-      email: trimmedEmail,
-      role: "user",
-      status: "pending",
-    };
-
-    const nextUsers = [pendingUser, ...users];
-    window.localStorage.setItem("appUsers", JSON.stringify(nextUsers));
-    setUsername("");
-    setPassword("");
-    setRequestName("");
-    setRequestEmail("");
-    setRequestMessage("Your access request was sent. An admin can approve it from the dashboard.");
   };
 
   return (

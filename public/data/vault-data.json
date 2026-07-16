@@ -1,0 +1,55 @@
+{
+  "users": [
+    {
+      "id": 1784119852793,
+      "username": "abv@gmail.com",
+      "password": "abv123",
+      "name": "abv",
+      "email": "abv@gmail.com",
+      "role": "user",
+      "status": "pending"
+    },
+    {
+      "id": 1,
+      "username": "admin",
+      "password": "admin123",
+      "name": "Kiran Kumar HK",
+      "email": "kiran@exdion.com",
+      "role": "admin",
+      "status": "approved"
+    },
+    {
+      "id": 2,
+      "username": "user",
+      "password": "user123",
+      "name": "Asha R",
+      "email": "asha@exdion.com",
+      "role": "user",
+      "status": "approved"
+    }
+  ],
+  "credentials": [
+    {
+      "id": 1,
+      "name": "SAP",
+      "email": "sap.user",
+      "password": "Sap@2026!",
+      "description": "Primary ERP access"
+    },
+    {
+      "id": 2,
+      "name": "Oracle",
+      "email": "finance.user",
+      "password": "Ora!2026#",
+      "description": "Finance system access"
+    },
+    {
+      "id": 3,
+      "name": "VPN",
+      "email": "remote.user",
+      "password": "Vpn#2026$",
+      "description": "Secure remote onboarding"
+    }
+  ],
+  "theme": "ocean"
+}

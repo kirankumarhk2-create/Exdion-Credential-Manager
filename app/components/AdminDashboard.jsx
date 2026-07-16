@@ -3,11 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import CredentialModal from './CredentialModal';
 import UserManagementModal from './UserManagementModal';
 
-const initialCredentials = [
-  { id: 1, name: 'SAP', email: 'sap.user', password: 'Sap@2026!', description: 'Primary ERP access' },
-  { id: 2, name: 'Oracle', email: 'finance.user', password: 'Ora!2026#', description: 'Finance system access' },
-  { id: 3, name: 'VPN', email: 'remote.user', password: 'Vpn#2026$', description: 'Secure remote onboarding' },
-];
+const initialCredentials = [];
 
 const normalizeCredentials = (items = []) =>
   items.map((item, index) => {
@@ -31,6 +27,26 @@ const seededUsers = [
   { id: 1, username: 'admin', password: 'admin123', name: 'Kiran Kumar HK', email: 'kiran@exdion.com', role: 'admin', status: 'approved' },
   { id: 2, username: 'user', password: 'user123', name: 'Asha R', email: 'asha@exdion.com', role: 'user', status: 'approved' },
 ];
+
+const persistVaultData = async (nextUsers, nextCredentials, nextTheme) => {
+  try {
+    const response = await fetch('/api/vault', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        users: nextUsers,
+        credentials: nextCredentials,
+        theme: nextTheme,
+      }),
+    });
+
+    if (!response.ok) {
+      return;
+    }
+  } catch {
+    // ignore sync errors
+  }
+};
 
 export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -72,10 +88,12 @@ export default function App() {
 
     setCredentials((prev) => {
       const exists = prev.some((item) => item.id === normalizedCredential.id);
-      if (exists) {
-        return prev.map((item) => (item.id === normalizedCredential.id ? normalizedCredential : item));
-      }
-      return [normalizedCredential, ...prev];
+      const nextCredentials = exists
+        ? prev.map((item) => (item.id === normalizedCredential.id ? normalizedCredential : item))
+        : [normalizedCredential, ...prev];
+
+      void persistVaultData(users, nextCredentials, theme);
+      return nextCredentials;
     });
 
     triggerPop(updatedCredential.id ? 'Updated' : 'Added', normalizedCredential.name);
@@ -83,7 +101,11 @@ export default function App() {
   };
 
   const handleDelete = (id) => {
-    setCredentials((prev) => prev.filter((item) => item.id !== id));
+    setCredentials((prev) => {
+      const nextCredentials = prev.filter((item) => item.id !== id);
+      void persistVaultData(users, nextCredentials, theme);
+      return nextCredentials;
+    });
     triggerPop('Deleted', selectedCredential?.name || 'credential');
     closeModal();
   };
@@ -109,76 +131,55 @@ export default function App() {
   const handleCreateUser = (user) => {
     const nextUsers = [{ ...user, status: user.status || 'approved' }, ...users];
     setUsers(nextUsers);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('appUsers', JSON.stringify(nextUsers));
-    }
+    void persistVaultData(nextUsers, credentials, theme);
     triggerPop('Created user', user.username);
   };
 
   const handleApproveUser = (userId) => {
     const nextUsers = users.map((user) => (user.id === userId ? { ...user, status: 'approved' } : user));
     setUsers(nextUsers);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('appUsers', JSON.stringify(nextUsers));
-    }
+    void persistVaultData(nextUsers, credentials, theme);
     triggerPop('Approved', 'user');
   };
 
   const handleRejectUser = (userId) => {
     const nextUsers = users.filter((user) => user.id !== userId);
     setUsers(nextUsers);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('appUsers', JSON.stringify(nextUsers));
-    }
+    void persistVaultData(nextUsers, credentials, theme);
     triggerPop('Rejected', 'user');
   };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const loadData = async () => {
       try {
-        const storedCredentials = window.localStorage.getItem('vaultCredentials');
-        if (storedCredentials) {
-          const parsedCredentials = JSON.parse(storedCredentials);
-          setCredentials(normalizeCredentials(parsedCredentials));
+        const response = await fetch('/api/vault');
+        if (response.ok) {
+          const data = await response.json();
+          setCredentials(normalizeCredentials(data.credentials || initialCredentials));
+          setUsers(data.users || seededUsers);
+          setTheme(data.theme || 'ocean');
         }
       } catch {
         // fall back
       }
 
-      try {
-        const storedUsers = window.localStorage.getItem('appUsers');
-        if (storedUsers) {
-          setUsers(JSON.parse(storedUsers));
-        }
-      } catch {
-        // fall back
-      }
+      if (typeof window !== 'undefined') {
+        const storedTheme = window.localStorage.getItem('theme') || 'ocean';
+        setTheme(storedTheme);
 
-      const storedTheme = window.localStorage.getItem('theme') || 'ocean';
-      setTheme(storedTheme);
-
-      const storedUser = window.localStorage.getItem('currentUser');
-      if (storedUser) {
-        try {
-          setCurrentUser(JSON.parse(storedUser));
-        } catch {
-          setCurrentUser(null);
+        const storedUser = window.localStorage.getItem('currentUser');
+        if (storedUser) {
+          try {
+            setCurrentUser(JSON.parse(storedUser));
+          } catch {
+            setCurrentUser(null);
+          }
         }
       }
-    }
+    };
+
+    void loadData();
   }, []);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('appUsers', JSON.stringify(users));
-    }
-  }, [users]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('vaultCredentials', JSON.stringify(credentials));
-    }
-  }, [credentials]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

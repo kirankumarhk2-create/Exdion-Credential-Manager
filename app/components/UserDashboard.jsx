@@ -3,11 +3,27 @@
 import { useEffect, useMemo, useState } from "react";
 import CredentialModal from "./CredentialModal";
 
-const initialCredentials = [
-  { id: 1, name: "SAP", email: "sap.user", password: "Sap@2026!", description: "Primary ERP access" },
-  { id: 2, name: "Oracle", email: "finance.user", password: "Ora!2026#", description: "Finance system access" },
-  { id: 3, name: "VPN", email: "remote.user", password: "Vpn#2026$", description: "Secure remote onboarding" },
-];
+const initialCredentials = [];
+
+const persistVaultData = async (nextCredentials, nextTheme) => {
+  try {
+    const response = await fetch("/api/vault", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        users: [],
+        credentials: nextCredentials,
+        theme: nextTheme,
+      }),
+    });
+
+    if (!response.ok) {
+      return;
+    }
+  } catch {
+    // ignore sync errors
+  }
+};
 
 const normalizeCredentials = (items = []) =>
   items.map((item, index) => {
@@ -57,17 +73,23 @@ export default function UserDashboard() {
 
     setCredentials((prev) => {
       const exists = prev.some((item) => item.id === normalizedCredential.id);
-      if (exists) {
-        return prev.map((item) => (item.id === normalizedCredential.id ? normalizedCredential : item));
-      }
-      return [normalizedCredential, ...prev];
+      const nextCredentials = exists
+        ? prev.map((item) => (item.id === normalizedCredential.id ? normalizedCredential : item))
+        : [normalizedCredential, ...prev];
+
+      void persistVaultData(nextCredentials, theme);
+      return nextCredentials;
     });
 
     closeModal();
   };
 
   const handleDelete = (id) => {
-    setCredentials((prev) => prev.filter((item) => item.id !== id));
+    setCredentials((prev) => {
+      const nextCredentials = prev.filter((item) => item.id !== id);
+      void persistVaultData(nextCredentials, theme);
+      return nextCredentials;
+    });
     closeModal();
   };
 
@@ -79,28 +101,33 @@ export default function UserDashboard() {
   }, [credentials, search]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    const loadData = async () => {
       try {
-        const storedCredentials = window.localStorage.getItem("vaultCredentials");
-        if (storedCredentials) {
-          const parsedCredentials = JSON.parse(storedCredentials);
-          setCredentials(normalizeCredentials(parsedCredentials));
+        const response = await fetch("/api/vault");
+        if (response.ok) {
+          const data = await response.json();
+          setCredentials(normalizeCredentials(data.credentials || initialCredentials));
+          setTheme(data.theme || "ocean");
         }
       } catch {
         // fall back
       }
 
-      const storedTheme = window.localStorage.getItem("theme") || "ocean";
-      setTheme(storedTheme);
-      const storedUser = window.localStorage.getItem("currentUser");
-      if (storedUser) {
-        try {
-          setCurrentUser(JSON.parse(storedUser));
-        } catch {
-          setCurrentUser(null);
+      if (typeof window !== "undefined") {
+        const storedTheme = window.localStorage.getItem("theme") || "ocean";
+        setTheme(storedTheme);
+        const storedUser = window.localStorage.getItem("currentUser");
+        if (storedUser) {
+          try {
+            setCurrentUser(JSON.parse(storedUser));
+          } catch {
+            setCurrentUser(null);
+          }
         }
       }
-    }
+    };
+
+    void loadData();
   }, []);
 
   useEffect(() => {
@@ -110,12 +137,6 @@ export default function UserDashboard() {
       window.dispatchEvent(new Event("theme:changed"));
     }
   }, [theme]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("vaultCredentials", JSON.stringify(credentials));
-    }
-  }, [credentials]);
 
   const copyToClipboard = async (value) => {
     try {
